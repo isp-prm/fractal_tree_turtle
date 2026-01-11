@@ -14,6 +14,9 @@ UI выполнен на tkinter, turtle рисует на встроенном 
 - Stroke (Возможность выбора фигруы для рисования: линия либо четерхугольник)
 - Palette (Цветовые режимы отрисовки)
 
+<img width="976" height="635" alt="Снимок экрана 2026-01-11 в 15 44 51" src="https://github.com/user-attachments/assets/47e059b6-8197-40c3-9236-778811147f21" />
+
+
 ## Требования
 - Python 3.10+ (на macOS обычно: python3)
 - Tkinter (обычно уже есть вместе с Python.org installer)
