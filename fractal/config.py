@@ -20,3 +20,6 @@ class TreeConfig:
     # палитра
     palette_name: str = "Classic"
     background: str = "#0b1020"
+
+    # режим рисования: "line" или "square"
+    draw_mode: str = "line"

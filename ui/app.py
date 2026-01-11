@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import turtle
 
 from fractal.config import TreeConfig
-from fractal.tree import FractalTreeRenderer
+from fractal.tree import FractalTreeRenderer, estimate_tree_bbox
 from fractal.palette import list_palette_names, get_palette
 
 
@@ -17,7 +16,6 @@ class FractalTreeApp:
         self.root.geometry("980x640")
         self.root.minsize(900, 600)
 
-        # Лэйаут: слева панель, справа canvas
         self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(0, weight=1)
 
@@ -29,12 +27,11 @@ class FractalTreeApp:
         self.canvas_frame.rowconfigure(0, weight=1)
         self.canvas_frame.columnconfigure(0, weight=1)
 
-        # Canvas для turtle
         self.canvas = tk.Canvas(self.canvas_frame, highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew")
 
         self.screen = turtle.TurtleScreen(self.canvas)
-        self.screen.tracer(0, 0)  # вручную обновляем
+        self.screen.tracer(0, 0)
         self.t = turtle.RawTurtle(self.screen)
 
         self.renderer = FractalTreeRenderer(self.t)
@@ -42,11 +39,9 @@ class FractalTreeApp:
         self._build_controls()
         self._apply_theme()
 
-        # Первый фон
         pal = get_palette(self.palette_var.get())
         self.screen.bgcolor(pal.background)
 
-        # горячие клавиши
         self.root.bind("<Return>", lambda e: self.on_draw())
         self.root.bind("<Escape>", lambda e: self.on_clear())
 
@@ -60,7 +55,6 @@ class FractalTreeApp:
             row=0, column=0, sticky="w", pady=(0, 10)
         )
 
-        # переменные
         self.depth_var = tk.IntVar(value=10)
         self.angle_var = tk.DoubleVar(value=25.0)
         self.length_var = tk.DoubleVar(value=120.0)
@@ -73,6 +67,9 @@ class FractalTreeApp:
         self.seed_var = tk.IntVar(value=0)
 
         self.palette_var = tk.StringVar(value="Classic")
+
+        # NEW: режим рисования
+        self.draw_mode_var = tk.StringVar(value="line")  # "line" | "square"
 
         row = 1
         row = self._add_spin(self.controls, "Depth", self.depth_var, 1, 16, row)
@@ -92,6 +89,16 @@ class FractalTreeApp:
         row = self._add_scale(self.controls, "Randomness", self.random_var, 0.0, 1.0, row, step=0.05)
         row = self._add_spin(self.controls, "Seed", self.seed_var, 0, 999999, row)
 
+        # NEW: Radiobutton выбор фигуры
+        ttk.Label(self.controls, text="Stroke").grid(row=row, column=0, sticky="w")
+        row += 1
+        rb = ttk.Frame(self.controls)
+        rb.grid(row=row, column=0, sticky="w", pady=(2, 10))
+
+        ttk.Radiobutton(rb, text="Line", value="line", variable=self.draw_mode_var).grid(row=0, column=0, padx=(0, 10))
+        ttk.Radiobutton(rb, text="Squares", value="square", variable=self.draw_mode_var).grid(row=0, column=1)
+        row += 1
+
         ttk.Label(self.controls, text="Palette").grid(row=row, column=0, sticky="w")
         row += 1
         self.palette_combo = ttk.Combobox(
@@ -105,7 +112,6 @@ class FractalTreeApp:
         self.palette_combo.bind("<<ComboboxSelected>>", lambda e: self._on_palette_change())
         row += 1
 
-        # кнопки
         btns = ttk.Frame(self.controls)
         btns.grid(row=row, column=0, sticky="ew")
         btns.columnconfigure(0, weight=1)
@@ -123,20 +129,17 @@ class FractalTreeApp:
         hint = (
             "Enter — Draw\n"
             "Esc — Clear\n\n"
-            "Совет: Depth 12–14 красиво,\n"
-            "но может быть медленнее."
+
         )
         ttk.Label(self.controls, text=hint, justify="left").grid(row=row, column=0, sticky="w", pady=(14, 0))
 
-        # растягивание панели
         for i in range(row + 1):
             self.controls.rowconfigure(i, pad=2)
 
     def _apply_theme(self) -> None:
-        # максимально нейтрально и минималистично
         style = ttk.Style()
         try:
-            style.theme_use("aqua")  # macOS theme
+            style.theme_use("aqua")
         except Exception:
             pass
 
@@ -164,7 +167,6 @@ class FractalTreeApp:
         val.grid(row=0, column=1, padx=(8, 0))
 
         def update_label(*_):
-            # округление под step
             v = float(var.get())
             if step >= 1:
                 v = round(v)
@@ -194,7 +196,7 @@ class FractalTreeApp:
         row += 1
         return row
 
-    # ---------------- actions ----------------
+    # ---------------- helpers ----------------
 
     def _make_config(self) -> TreeConfig:
         pal = get_palette(self.palette_var.get())
@@ -209,12 +211,48 @@ class FractalTreeApp:
             seed=int(self.seed_var.get()),
             palette_name=str(self.palette_var.get()),
             background=pal.background,
+            draw_mode=str(self.draw_mode_var.get()),
         )
+
+    def _fit_world_to_bbox(self, bbox, margin_px: float = 24.0) -> None:
+        # """
+        # Настраивает worldcoordinates так, чтобы bbox целиком влезал в canvas и был по центру.
+        # """
+        # обновим геометрию окна, чтобы winfo_width/height были актуальными
+        self.root.update_idletasks()
+
+        cw = max(1, int(self.canvas.winfo_width()))
+        ch = max(1, int(self.canvas.winfo_height()))
+        canvas_aspect = cw / ch
+
+        # bbox с запасом
+        padded = bbox.pad(margin_px)
+
+        # приводим bbox к аспекту canvas: расширяем по нужной оси, чтобы не обрезало
+        bb_aspect = padded.w / padded.h
+        cx = (padded.minx + padded.maxx) / 2.0
+        cy = (padded.miny + padded.maxy) / 2.0
+
+        if bb_aspect > canvas_aspect:
+            # bbox “шире”, расширяем по высоте
+            new_h = padded.w / canvas_aspect
+            half_h = new_h / 2.0
+            llx, urx = padded.minx, padded.maxx
+            lly, ury = cy - half_h, cy + half_h
+        else:
+            # bbox “выше”, расширяем по ширине
+            new_w = padded.h * canvas_aspect
+            half_w = new_w / 2.0
+            lly, ury = padded.miny, padded.maxy
+            llx, urx = cx - half_w, cx + half_w
+
+        self.screen.setworldcoordinates(llx, lly, urx, ury)
+
+    # ---------------- actions ----------------
 
     def on_draw(self) -> None:
         cfg = self._make_config()
 
-        # простая валидация
         if cfg.depth < 0 or cfg.depth > 18:
             messagebox.showerror("Invalid depth", "Depth должен быть в пределах 0..18")
             return
@@ -224,6 +262,10 @@ class FractalTreeApp:
 
         pal = get_palette(cfg.palette_name)
         self.screen.bgcolor(pal.background)
+
+        # NEW: считаем bbox и подгоняем worldcoordinates => дерево всегда влезает и центрируется
+        bbox = estimate_tree_bbox(cfg)
+        self._fit_world_to_bbox(bbox, margin_px=30.0)
 
         self.t.clear()
         self.t.penup()
@@ -243,8 +285,6 @@ class FractalTreeApp:
         self.screen.update()
 
     def on_save_ps(self) -> None:
-        # tkinter Canvas умеет PostScript нативно.
-        # Пользователь сможет конвертировать в PNG через macOS Preview или ImageMagick.
         path = filedialog.asksaveasfilename(
             defaultextension=".ps",
             filetypes=[("PostScript", "*.ps")],
@@ -253,7 +293,6 @@ class FractalTreeApp:
         if not path:
             return
         try:
-            # Важно: сохраняем именно Tk Canvas
             self.canvas.postscript(file=path, colormode="color")
             messagebox.showinfo("Saved", f"Saved:\n{path}\n\nМожно открыть в Preview и экспортировать в PNG.")
         except Exception as e:
