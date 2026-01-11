@@ -40,10 +40,6 @@ class BBox:
 
 
 def estimate_tree_bbox(cfg: TreeConfig) -> BBox:
-    """
-    Считает bbox дерева в “математических” координатах (в тех же, в которых будем рисовать),
-    чтобы затем подогнать worldcoordinates под canvas и гарантировать, что всё влезет.
-    """
     rnd = random.Random(cfg.seed)
 
     # старт: (0,0), смотрим вверх (90°)
@@ -106,9 +102,6 @@ def estimate_tree_bbox(cfg: TreeConfig) -> BBox:
 
 
 class FractalTreeRenderer:
-    """
-    Рисует фрактальное дерево на переданном turtle.Turtle
-    """
 
     def __init__(self, t: turtle.Turtle) -> None:
         self.t = t
@@ -156,9 +149,6 @@ class FractalTreeRenderer:
         self.t.stamp()
 
     def _forward_with_squares(self, dist: float, thickness: float) -> None:
-        """
-        Двигаемся вперёд, оставляя квадраты вдоль ветви.
-        """
         step = max(4.0, thickness * 0.9)
         remaining = dist
 

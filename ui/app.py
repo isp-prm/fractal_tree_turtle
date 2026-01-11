@@ -215,9 +215,7 @@ class FractalTreeApp:
         )
 
     def _fit_world_to_bbox(self, bbox, margin_px: float = 24.0) -> None:
-        # """
-        # Настраивает worldcoordinates так, чтобы bbox целиком влезал в canvas и был по центру.
-        # """
+
         # обновим геометрию окна, чтобы winfo_width/height были актуальными
         self.root.update_idletasks()
 
